@@ -1,0 +1,428 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0f1720">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="ai-dojo">
+<title>ai-dojo｜コードとAIの道場</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon.svg">
+<style>
+:root{--bg:#0f1720;--card:#17212d;--line:#26344a;--tx:#e8eef6;--mu:#8fa3ba;--ac:#4fd1c5;--ok:#7bd88f;--ng:#ff8a80;--wn:#ffd166}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:var(--bg);color:var(--tx);font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP",sans-serif;line-height:1.7}
+body{padding:calc(12px + env(safe-area-inset-top)) 16px calc(86px + env(safe-area-inset-bottom));max-width:720px;margin:0 auto}
+h1{font-size:20px;margin:4px 0 2px}h2{font-size:17px;margin:18px 0 8px}h3{font-size:15px;margin:14px 0 6px;color:var(--ac)}
+.sub{color:var(--mu);font-size:13px;margin:0 0 12px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin:10px 0}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+button{font:inherit;background:var(--ac);color:#06201d;border:0;border-radius:10px;padding:10px 14px;font-weight:700;min-height:44px}
+button.g{background:transparent;color:var(--tx);border:1px solid var(--line);font-weight:500}
+button:disabled{opacity:.5}
+textarea,input{font:inherit;width:100%;background:#0c131b;color:var(--tx);border:1px solid var(--line);border-radius:10px;padding:10px;font-size:16px}
+textarea{min-height:130px;resize:vertical}
+.nav{position:fixed;left:0;right:0;bottom:0;display:flex;background:#0c131bee;backdrop-filter:blur(10px);border-top:1px solid var(--line);padding:6px 6px calc(6px + env(safe-area-inset-bottom));z-index:5}
+.nav button{flex:1;background:transparent;color:var(--mu);font-size:11px;font-weight:600;padding:6px 2px;min-height:48px;border-radius:8px}
+.nav button b{display:block;font-size:20px;line-height:1.1}
+.nav button.on{color:var(--ac)}
+.lesson{display:flex;gap:10px;align-items:center;cursor:pointer}
+.lesson .n{flex:0 0 34px;height:34px;border-radius:50%;background:#0c131b;border:1px solid var(--line);display:grid;place-items:center;font-weight:700;font-size:14px}
+.lesson.done .n{background:var(--ok);color:#06200f;border-color:var(--ok)}
+.lesson .t{font-weight:700}.lesson .s{font-size:12.5px;color:var(--mu)}
+.bar{height:8px;background:#0c131b;border-radius:6px;overflow:hidden}.bar i{display:block;height:100%;background:var(--ac)}
+.tag{display:inline-block;font-size:11px;padding:1px 8px;border-radius:99px;border:1px solid var(--line);color:var(--mu);margin-right:4px}
+.tag.real{color:var(--wn);border-color:var(--wn)}
+.try{border-left:3px solid var(--wn);padding:6px 12px;background:#1d2530;border-radius:0 10px 10px 0;margin:10px 0}
+pre,code{font-family:ui-monospace,Menlo,monospace}
+pre{background:#0a1017;border:1px solid var(--line);border-radius:10px;padding:10px;overflow:auto;font-size:12.5px;white-space:pre-wrap;word-break:break-all}
+code{background:#0a1017;padding:1px 5px;border-radius:5px;font-size:.92em}
+.bad{border-left:3px solid var(--ng);padding:4px 10px;margin:8px 0;background:#2a1b1d;border-radius:0 8px 8px 0}
+.good{border-left:3px solid var(--ok);padding:4px 10px;margin:8px 0;background:#172a1f;border-radius:0 8px 8px 0}
+.opt{display:block;width:100%;text-align:left;background:#0c131b;color:var(--tx);border:1px solid var(--line);font-weight:500;margin:6px 0}
+.opt.ok{border-color:var(--ok);background:#14281c}.opt.ng{border-color:var(--ng);background:#2b1a1c}
+.chk{display:flex;gap:8px;align-items:flex-start;margin:4px 0;font-size:14px}.chk span:first-child{width:22px}
+.msg{font-size:13px;color:var(--mu);min-height:20px}
+.gl dt{font-weight:700;color:var(--ac);margin-top:10px}.gl dd{margin:2px 0 0 0;color:var(--tx)}
+.back{background:transparent;color:var(--ac);padding:4px 0;min-height:36px;font-weight:600}
+.note{border:1px solid var(--line);border-radius:10px;padding:8px 10px;margin:6px 0;font-size:14px;white-space:pre-wrap}
+.note small{color:var(--mu);display:block}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script type="text/plain" id="shipfn">function Nz([string]$s) { ($s.Normalize([Text.NormalizationForm]::FormKC) -replace '[ー―–—−‐]','-' -replace '\s','').ToLower() }
+function Ship {
+  param([string]$name, [string[]]$files)
+  $user = "norinori-jan"
+  $dest = Join-Path $env:USERPROFILE $name
+  $roots = @("Downloads","iCloudDrive","Desktop","OneDrive") | ForEach-Object { Join-Path $env:USERPROFILE $_ } | Where-Object { Test-Path $_ }
+  Write-Host "=== $name ==="
+  $pool = foreach ($r in $roots) { Get-ChildItem $r -File -Recurse -Depth 2 -ErrorAction SilentlyContinue }
+  $src = @{}
+  foreach ($f in $files) {
+    $b = [IO.Path]::GetFileNameWithoutExtension($f); $e = [IO.Path]::GetExtension($f)
+    $pat = '^' + [regex]::Escape((Nz $name)) + '(-r\d+)?_*' + [regex]::Escape((Nz $b)) + '.*' + [regex]::Escape((Nz $e)) + '(\.txt)?$'
+    $c = $pool | Where-Object { (Nz $_.Name) -match $pat } | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    if (-not $c) {
+      Write-Host "NG: ${name}__$f が見つかりません"
+      Write-Host "  探した場所: $($roots -join ', ')"
+      $near = $pool | Where-Object { (Nz $_.Name).Contains((Nz $name)) } | Select-Object -First 8
+      if ($near) { Write-Host "  近い名前のファイル:"; $near | ForEach-Object { Write-Host "    $($_.FullName)" } } else { Write-Host "  名前に $name を含むファイルが1つもありません" }
+      return
+    }
+    Write-Host "  見つけた: $($c.FullName)"
+    $src[$f] = $c
+  }
+  gh repo view "$user/$name" *> $null
+  $exists = ($LASTEXITCODE -eq 0)
+  New-Item -ItemType Directory -Force -Path $dest | Out-Null
+  Set-Location $dest
+  if (-not (Test-Path ".git")) {
+    git init
+    git branch -M main
+    if ($exists) { git remote add origin "https://github.com/$user/$name.git"; git fetch origin; git reset origin/main; git checkout -- . }
+  } elseif ($exists) { git pull --rebase }
+  foreach ($f in $files) { Copy-Item $src[$f].FullName (Join-Path $dest $f) -Force }
+  git add @files
+  git diff --cached --quiet
+  if ($LASTEXITCODE -eq 0) { Write-Host "$name : 変更なし（すでに反映済み）"; return }
+  git commit -m "update $name"
+  if (-not $exists) { gh repo create "$user/$name" --public --source . --remote origin }
+  $br = (git rev-parse --abbrev-ref HEAD).Trim()
+  git push -u origin $br
+  if ($LASTEXITCODE -ne 0) { Write-Host "NG: $name の push に失敗しました（ブランチ: $br）"; return }
+  gh api "repos/$user/$name/pages" *> $null
+  if ($LASTEXITCODE -ne 0) { gh api -X POST "repos/$user/$name/pages" -f "source[branch]=$br" -f "source[path]=/" *> $null }
+  Write-Host "完了: https://$user.github.io/$name/"
+}
+</script>
+
+<nav class="nav" id="nav"></nav>
+<script>
+"use strict";
+// ============ 保存（小さく・失敗しても動く） ============
+const store={get(k,d){try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}},
+  set(k,v){try{localStorage.setItem(k,JSON.stringify(v));return true}catch(e){return false}}};
+const KEY='aidojo_v1';
+let S=Object.assign({done:{},quiz:{},prac:{},notes:[]},store.get(KEY,{}));
+const save=()=>store.set(KEY,S);
+const $=s=>document.querySelector(s);
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+// ============ レッスン ============
+const L=[
+{id:'l1',t:'AIは何をしている？',s:'一番大事な土台',tag:'基本',
+ b:['<p>AIは「次に来そうな言葉」を高い精度で選んで文章を作っています。<b>調べた事実を引いている</b>のではなく、<b>それっぽく整った答えを作る</b>のが本業です。</p>',
+ '<p>だから、知らないことでも自信満々に答えてしまうことがあります（これを「ハルシネーション」と呼びます）。</p>',
+ '<div class="good"><b>得意：</b>文章・コードのたたき台、言い換え、整理、翻訳、エラーの原因の推測</div>',
+ '<div class="bad"><b>苦手：</b>最新の事実、数字の正確さ、あなたの環境で実際に動くかの保証</div>'],
+ try:'AIの答えのうち「動かして確かめられること」を1つ選び、実際に確かめてみてください。',
+ q:{q:'AIの回答への正しい向き合い方は？',o:['全部正しいので、そのまま使う','動かす・調べるなど、確かめられる所は確かめる','難しい質問は聞かない'],a:1,w:'AIは「もっともらしい」答えを作ります。確かめられる所は必ず確かめるのが基本です。'}},
+{id:'l2',t:'頼み方の型：4点セット',s:'目的・材料・制約・出力形式',tag:'基本',
+ b:['<p>良い依頼は、次の4つが入っています。</p>',
+ '<div class="chk"><span>🎯</span><span><b>目的</b>：何を実現したいか（なぜ）</span></div>',
+ '<div class="chk"><span>📎</span><span><b>材料</b>：今の状況、ファイル、エラー全文、使っている端末や環境</span></div>',
+ '<div class="chk"><span>🚧</span><span><b>制約</b>：変えてはいけない所、使ってはいけない物、守るルール</span></div>',
+ '<div class="chk"><span>📦</span><span><b>出力形式</b>：どんな形で欲しいか（コピペできる1ブロック、表、手順など）</span></div>',
+ '<div class="bad">アプリ作って</div>',
+ '<div class="good">iPhoneだけで使う学習アプリを作りたい。HTML1ファイルで、外部ライブラリなし。既存の記録は消さない。完成したらダウンロードできる形で。</div>'],
+ try:'「練習」タブの課題1で、4点セットを入れて書き直してみましょう。',
+ q:{q:'4点セットに含まれないのは？',o:['目的','制約','AIへの丁寧な挨拶','出力形式'],a:2,w:'丁寧さは悪くありませんが、結果を大きく変えるのは目的・材料・制約・出力形式です。'}},
+{id:'l3',t:'材料を渡す：全文を貼る',s:'エラーは要約せず、そのまま',tag:'基本',
+ b:['<p>AIは画面の向こうが見えません。<b>見えているものをそのまま渡す</b>のが最短です。</p>',
+ '<div class="bad">「なんかエラーが出た」</div>',
+ '<div class="good">PowerShellで次を実行したら、下のエラーが出た。<br>コマンド：（貼る）<br>エラー全文：（貼る）<br>直前にやったこと：（書く）</div>',
+ '<p>ポイントは3つ：<b>実行したもの / 出た結果の全文 / 何を期待していたか</b>。要約すると、原因の手がかりが消えます。</p>'],
+ try:'最近出たエラーを1つ思い出し、上の3点で書き出してみましょう。',
+ q:{q:'エラーを相談するときに最も役立つのは？',o:['「動きません」と短く伝える','エラー全文と実行したコマンドを貼る','画面の雰囲気を説明する'],a:1,w:'全文と実行した内容が、原因を絞る一番の手がかりです。'}},
+{id:'l4',t:'小さく頼んで、確かめて、進む',s:'一度に全部頼まない',tag:'基本',
+ b:['<p>大きな依頼は、途中で食い違っても気づけません。<b>小さい単位で作って、動かして、次へ</b>。</p>',
+ '<pre>1. まず画面の骨組みだけ\n2. 動くか確認\n3. 保存機能を足す\n4. 動くか確認\n5. 見た目を整える</pre>',
+ '<p>各段階で「ここまで動いた」を確認すると、問題が出たとき<b>直前の1手</b>だけ疑えば済みます。</p>'],
+ try:'次に作りたいものを、確認できる5段階に分けてみましょう。',
+ q:{q:'大きなアプリを頼むときの良いやり方は？',o:['全部を1回で頼む','小さい段階に分け、各段階で動作確認する','完成まで一切確認しない'],a:1,w:'段階ごとに確認すると、原因の範囲が狭くなります。'}},
+{id:'l5',t:'エラーの読み方',s:'怖くない。上と下を見る',tag:'コード',
+ b:['<p>エラーメッセージは長くても、見る所は決まっています。</p>',
+ '<pre>SyntaxError: Unexpected token  ← ① 種類\n  at index.html:120:15        ← ② 場所（ファイル:行:列）</pre>',
+ '<p><b>① 何の種類か</b>（構文／見つからない／権限／通信）<b>② どこか</b>（ファイル名と行）を拾います。残りは参考情報です。</p>',
+ '<p>よくある種類：</p><dl class="gl"><dt>SyntaxError</dt><dd>書き方の間違い（括弧・引用符の閉じ忘れなど）</dd><dt>undefined / not found</dt><dd>名前の綴り違い、ファイルが無い</dd><dt>401 / 403</dt><dd>認証（キー・トークン）または権限の問題</dd><dt>404</dt><dd>URLやファイル名が違う</dd></dl>'],
+ try:'直近のエラーから「種類」と「場所」を1行ずつ拾ってみましょう。',
+ q:{q:'「401」が返ってきた。まず疑うのは？',o:['画面の色','キー／トークンが違う・未設定','CSSの書き方'],a:1,w:'401は認証失敗。トークンの入力ミスや未設定をまず確認します。'}},
+{id:'l6',t:'Gitの4語',s:'add・commit・push・pull',tag:'コード',
+ b:['<p>Gitは「変更履歴つきの保管庫」。最低限は4語です。</p>',
+ '<dl class="gl"><dt>add</dt><dd>今回の変更を「提出箱」に入れる</dd><dt>commit</dt><dd>提出箱の中身に名前をつけて、履歴に記録する（まだ自分のPC内）</dd><dt>push</dt><dd>記録をGitHubへ送る（ここで公開ページが更新される）</dd><dt>pull</dt><dd>GitHub側の最新を手元に取り込む</dd></dl>',
+ '<p>「nothing to commit」は<b>変更が無い</b>という意味で、失敗ではありません。</p>',
+ '<p>iPhoneにはGitの道具が無いので、<b>PCのPowerShellで行う</b>運用です。</p>'],
+ try:'add→commit→push の順に、何が起きるかを自分の言葉で言ってみましょう。',
+ q:{q:'GitHub上の公開ページが更新されるのはいつ？',o:['add した時','commit した時','push した時'],a:2,w:'commitは手元の記録。push でGitHubに届いて初めて公開側が更新されます。'}},
+{id:'l7',t:'【実体験】同じ名前のファイル事件',s:'index.html が何個もある問題',tag:'実体験',real:1,
+ b:['<p>複数のアプリを作ると、どれも <code>index.html</code> <code>sw.js</code> という名前。ダウンロードフォルダで混ざり、違うアプリに上書きしかけました。</p>',
+ '<div class="good"><b>対策：</b>配布時に <code>アプリ名__ファイル名</code>（例 <code>table-pad__index.html</code>）にし、取り込み側で名前から探して正しい場所へ置く。</div>',
+ '<p><b>学び：</b>「同じ名前が複数ある」状況自体が事故の元。人の注意力に頼らず、<b>名前の仕組みで防ぐ</b>。</p>',
+ '<p>AIへの頼み方にも応用できます：<b>「こういう事故が起きた。起きない仕組みにして」</b>と、原因ごと伝える。</p>'],
+ try:'あなたの環境で「同じ名前が複数ある」ものは他にありますか？',
+ q:{q:'この事件の根本的な対策は？',o:['もっと気をつけて確認する','名前の付け方で混ざらない仕組みにする','ファイルを減らす'],a:1,w:'注意力ではなく仕組みで防ぐのが再発防止の基本です。'}},
+{id:'l8',t:'【実体験】コマンドに<placeholder>',s:'そのまま貼れる形で頼む',tag:'実体験',real:1,
+ b:['<p>PowerShellに <code>cd &lt;フォルダ名&gt;</code> と貼ると、<code>&lt;</code> が特別な記号なのでエラーになります。説明文を混ぜても同じです。</p>',
+ '<div class="bad">cd &lt;table-pad のフォルダ&gt;</div>',
+ '<div class="good">cd "$env:USERPROFILE\\table-pad"</div>',
+ '<p><b>学び：</b>AIに頼むとき、最初から<b>「そのままコピペで動く形。説明文や空欄は入れない」</b>と制約に書く。</p>'],
+ try:'次にコマンドを頼むとき、書き足す一文を考えてみましょう。',
+ q:{q:'貼り付け用コマンドを頼む時の制約として最適なのは？',o:['できるだけ短く','そのままコピペで動く形。空欄・説明文なし','丁寧に説明して'],a:1,w:'出力形式の指定が、貼ってエラーになる事故を防ぎます。'}},
+{id:'l9',t:'秘密は貼らない',s:'キー・トークン・パスワード',tag:'安全',
+ b:['<p>AIのチャットやスクリーンショット、GitHubへ貼った文字列は<b>外に残る</b>と考えます。</p>',
+ '<div class="bad">APIキー、トークン、パスワード、リカバリーコード、カード番号を貼る</div>',
+ '<div class="good">「トークンは入力欄に自分で入れる」設計にしてもらう。貼る必要がある時は伏せ字（sk-****）にする。</div>',
+ '<p>うっかり貼ったら：<b>そのキーは使えなくして作り直す</b>（失効→再発行）が正解です。消しても、見られた可能性は消えません。</p>'],
+ try:'今使っているキーやトークンが、どこに保存されているか書き出してみましょう（値は書かない）。',
+ q:{q:'APIキーをチャットに貼ってしまった。正しい対処は？',o:['メッセージを削除すれば安全','そのキーを失効させて再発行する','そのまま使い続ける'],a:1,w:'一度外に出た秘密は、削除では取り戻せません。失効して作り直します。'}},
+{id:'l10',t:'しくみを知る：単一HTML PWA',s:'あなたのアプリの正体',tag:'コード',
+ b:['<p>あなたのアプリは、<b>1つのHTMLファイル</b>に見た目（HTML/CSS）と動き（JavaScript）が入っています。</p>',
+ '<dl class="gl"><dt>localStorage</dt><dd>ブラウザ内の小さな保存箱（約5MB）。同じ公開元のアプリは<b>1つの箱を共有</b>します。</dd><dt>Service Worker</dt><dd>オフラインでも動かすための裏方。更新が反映されない時はこれを疑う。</dd><dt>manifest</dt><dd>ホーム画面に追加した時の名前とアイコンの設定。</dd><dt>GitHub Pages</dt><dd>リポジトリをそのままWebページとして公開する仕組み。</dd></dl>',
+ '<p>「保存がいっぱいにならないか？」という疑問は、この仕組みを知っていたからこそ出た良い質問です。</p>'],
+ try:'自分のアプリの1つについて、保存場所・更新方法・公開場所を1行ずつ言ってみましょう。',
+ q:{q:'同じ公開元(github.io)のアプリ同士で共有されるのは？',o:['画面の見た目','localStorageの容量','GitHubのパスワード'],a:1,w:'同じ公開元は同じ保存箱（約5MB）を分け合います。大量データはIndexedDBへ。'}},
+{id:'l11',t:'依頼文の具体例集',s:'そのまま真似できる4パターン',tag:'実践',
+ b:['<p>状況別の「型」です。<b>【　】の所だけ</b>自分の内容に置き換えます。</p>',
+ '<h3>① 新しいアプリを作る</h3><pre>【何】を作りたい。使うのは【iPhone】。\nHTML1ファイル、外部ライブラリなし。\n保存は端末内のみ。\nまず【入力と一覧】だけ作って、確認手順を添えて。</pre>',
+ '<h3>② 既存アプリを直す</h3><pre>【アプリ名】の【どこ】が【どうなる】。\n目的：【こうなってほしい】。\n変更は【その部分】に限り、他の機能と保存形式は変えない。\n変更箇所の説明と、完成した全体を1ファイルで。</pre>',
+ '<h3>③ エラーを直す</h3><pre>【環境】で【コマンド】を実行したら下のエラーが出た。\n（エラー全文）\n直前にやったこと：【】\n原因の候補を可能性の高い順に3つ、確認方法つきで。</pre>',
+ '<h3>④ 調べて比べる</h3><pre>【A】と【B】を【基準】で比較して。\n最新情報を確認し、出典のURLも付けて。\nわからない所は「不明」と書いて、推測と事実を分けて。</pre>'],
+ try:'直近で頼みたいことを①〜④のどれかに当てはめて書いてみましょう。',
+ q:{q:'「調べて比べる」依頼で入れておくと安全な一文は？',o:['できるだけ早く','推測と事実を分けて、不明は不明と書いて','何でもいいから答えて'],a:1,w:'事実と推測を分けさせると、ハルシネーションに気づきやすくなります。'}},
+{id:'l12',t:'PowerShell入門：5つの基本',s:'場所を動く・見る・コピーする',tag:'PowerShell',
+ b:['<p>PowerShellは「文字でPCを操作する画面」。最初は5つで足ります。</p>',
+ '<pre>pwd                              # 今いる場所を見る\nls                               # 中身を見る（dir も同じ）\ncd "$env:USERPROFILE\\Downloads"  # 場所を移動する\nCopy-Item 元 先 -Force           # コピーする\nNew-Item -ItemType Directory -Force -Path 名前   # フォルダを作る</pre>',
+ '<dl class="gl"><dt>$env:USERPROFILE</dt><dd>あなたのユーザーフォルダ（C:\\Users\\名前）の別名。誰のPCでも通じる。</dd><dt>" "（引用符）</dt><dd>名前に空白や日本語がある時は必ず囲む。</dd><dt>#</dt><dd>その行の後ろはコメント（実行されない）。</dd></dl>',
+ '<div class="bad">cd &lt;フォルダ名&gt;　← &lt; は特別な記号なのでエラー</div>',
+ '<div class="good">cd "$env:USERPROFILE\\table-pad"</div>'],
+ try:'pwd と ls を実際に打って、結果を見てみましょう（壊れません）。',
+ q:{q:'ユーザーフォルダを指す書き方は？',o:['$env:USERPROFILE','&lt;ユーザー名&gt;','~~'],a:0,w:'$env:USERPROFILE は誰のPCでも自分のユーザーフォルダを指します。'}},
+{id:'l13',t:'PowerShellでGit一式',s:'Ship関数を読めるようになる',tag:'PowerShell',
+ b:['<p>配布で使っている <code>Ship</code> は、次の流れを自動化したものです。</p>',
+ '<pre>1. ダウンロードから アプリ名__ファイル を探す\n2. フォルダが無ければ作る\n3. リポジトリが無ければ作る\n4. ファイルをコピー\n5. git add → commit → push\n6. 公開(Pages)をオンにする</pre>',
+ '<p>各行の意味を知っていれば、<b>失敗した時にどの段階か</b>がわかります。</p>',
+ '<dl class="gl"><dt>NG: …がダウンロードにありません</dt><dd>1の失敗。ファイル名の綴り、保存場所を確認。</dd><dt>nothing to commit</dt><dd>5の途中。変更が無いだけ（成功扱い）。</dd><dt>rejected / non-fast-forward</dt><dd>GitHub側が先に進んでいる。先に pull が必要。</dd><dt>Authentication failed</dt><dd>ログイン切れ。gh auth login をやり直す。</dd></dl>'],
+ try:'直近のpush結果の文字を、上の4つのどれかに当てはめてみましょう。',
+ q:{q:'「nothing to commit」が出た。意味は？',o:['失敗した','変更が無いので記録するものが無い','GitHubが壊れた'],a:1,w:'前回から変更が無い時の表示。多くの場合、すでに反映済みです。'}},
+{id:'l14',t:'AIにコードを直してもらう流れ',s:'貼る→指定する→確かめる',tag:'実践',
+ b:['<p>直してもらう時の基本の3手です。</p>',
+ '<div class="chk"><span>1</span><span><b>現物を渡す</b>：直したいファイルを添付（または貼る）。記憶や要約で頼まない。</span></div>',
+ '<div class="chk"><span>2</span><span><b>範囲を縛る</b>：「この機能だけ。他は変えない」。</span></div>',
+ '<div class="chk"><span>3</span><span><b>形を指定</b>：「全体を1ファイルで」or「変更箇所だけ」。迷うなら全体。</span></div>',
+ '<p>返ってきたら<b>変わった所の説明</b>を読み、<b>前に動いていた機能</b>が壊れていないかも確認します（直した所だけ見ると見落とす）。</p>',
+ '<div class="try">違うセッションや古いコピーで上書きしない。<b>最新のファイルを渡してから</b>頼む。</div>'],
+ try:'次に直したいアプリで、「変えない範囲」を3つ書き出してみましょう。',
+ q:{q:'直してもらった後、確認すべきなのは？',o:['直した所だけ','直した所と、前に動いていた主な機能','何も確認しない'],a:1,w:'修正が別の機能を壊す（デグレ）のはよくあります。主な機能も一巡させます。'}},
+{id:'l15',t:'iPhoneでの動作確認チェック',s:'開発ツールが無くても確かめる',tag:'実践',
+ b:['<p>iPhoneにはコンソール（開発者画面）がありません。<b>目で見て確かめる手順</b>を決めておきます。</p>',
+ '<pre>□ 開く：真っ白にならない\n□ 入力して保存 → 閉じて開き直しても残る\n□ 機内モードでも開く（オフライン）\n□ 更新：古い画面のままなら、ホーム画面のアイコンを削除して再追加\n□ 前からある機能も1つずつ触る</pre>',
+ '<p>うまく動かない時は、<b>何をして、どう見えたか</b>を書いてAIに伝えます（画面のスクリーンショットも有効。秘密が映っていないか確認）。</p>'],
+ try:'自分のアプリ1つで、上のチェックを全部やってみましょう。',
+ q:{q:'更新したのに古い画面のまま。疑うのは？',o:['Service Workerのキャッシュ','画面の明るさ','文字の大きさ'],a:0,w:'キャッシュが残っていることが多い。アイコンを入れ直すか、反映を待ちます。'}},
+{id:'l16',t:'完成形：アプリ制作の一連の流れ',s:'ここまでの全部を1本につなぐ',tag:'仕上げ',
+ b:['<p>これまでの学びをつなげると、アプリ作りは次の7手になります。</p>',
+ '<pre>1. 依頼文を作る（4点セット）→「作る」タブ\n2. AIに小さく作らせる（まず骨組み）\n3. ファイルを受け取る（アプリ名__ファイル名）\n4. iPhoneの確認チェックを通す\n5. 配布コマンド（Ship）でGitHubへ\n6. 公開ページで実機確認\n7. 学びをノートに残す → 次の依頼に活かす</pre>',
+ '<p><b>「作る」タブ</b>では、1と5を自動で用意します（依頼文の組み立て／配布コマンドの生成）。</p>',
+ '<p>うまくいかなかった所は、<b>記録タブ</b>に「何が起きた→次はどうする」で残すと、あなた専用のルール集になります。</p>'],
+ try:'「作る」タブで、次に作るアプリの依頼文を1本作ってみましょう。',
+ q:{q:'アプリ作りの最初の一手は？',o:['すぐ全部作らせる','4点セットで依頼文を作る','公開する'],a:1,w:'依頼文の質が、その後の手戻りの量を決めます。'}}
+];
+
+// ============ 練習課題 ============
+const P=[
+{id:'p1',t:'アプリを頼む',vague:'メモアプリ作って',
+ ctx:'状況：iPhoneで使う。HTML1ファイル、外部ライブラリなし。データは端末内に保存。既存データを壊したくない。',
+ ex:'iPhoneで使う、1行メモを素早く残せるアプリを作りたい。HTML1ファイルで外部ライブラリは使わない。保存は端末内のみで、既存の記録形式は変えない。まず入力と一覧だけ作って、動作確認の手順も添えて。'},
+{id:'p2',t:'エラーを相談する',vague:'pushできない 直して',
+ ctx:'状況：PowerShellで git push をしたら失敗した。',
+ ex:'Windows PowerShellで「git push -u origin main」を実行したら、次のエラーが出た。\n（エラー全文を貼る）\n直前にやったこと：リポジトリを新規作成し、ファイルをコピーして commit した。原因の候補を可能性の高い順に3つ、確認コマンド付きで。そのまま貼れる形で。'},
+{id:'p3',t:'既存アプリを直す',vague:'ここ直して',
+ ctx:'状況：既存アプリの保存ボタンが反応しない。',
+ ex:'既存のtable-padで、保存ボタンを押しても何も起きない。目的は保存が確実に動くこと。次のファイルを添付する。変更は保存処理に限り、他の機能と既存データの形式は変えない。変更した箇所の説明と、確認手順を付けて、全体を1ファイルで。'}
+];
+const CHK=[
+ {k:'goal',l:'🎯 目的（何をしたいか）',re:/したい|作りたい|目的|ために|知りたい|欲しい|ほしい|直したい|できるように|確実に/},
+ {k:'ctx',l:'📎 材料・状況（環境/エラー/経緯）',re:/iPhone|PC|Windows|PowerShell|エラー|添付|貼る|直前|状況|環境|既存|\d{2,}|「.+」/},
+ {k:'lim',l:'🚧 制約（変えない/使わない/範囲）',re:/しない|ない。|だけ|以外|限り|変えない|壊さない|使わない|のみ|まで|必ず|禁止|以内/},
+ {k:'out',l:'📦 出力形式（どんな形で欲しいか）',re:/形式|表|箇条|コピペ|貼れる|1ファイル|1ブロック|手順|順に|付けて|添えて|説明|可能性の高い順/}
+];
+const evalP=t=>CHK.map(c=>({...c,ok:c.re.test(t)}));
+
+// ============ 用語 ============
+const G=[
+['プロンプト','AIに渡す指示文。材料が多いほど良い答えが返る。'],
+['コンテキスト','AIに見せている情報の全体（会話・貼ったファイルなど）。長すぎると古い内容を忘れる。'],
+['ハルシネーション','AIがもっともらしい嘘を答えること。確かめられる所は確かめる。'],
+['トークン','①AIが文字を数える単位。②ログイン代わりの合言葉（APIトークン）。文脈で意味が違う。②は秘密。'],
+['APIキー','サービスを自動で呼ぶための合言葉。漏れたら失効して再発行。'],
+['リポジトリ','GitHub上の作品フォルダ。変更履歴つき。'],
+['コミット','変更に名前をつけて履歴へ記録すること（手元のみ）。'],
+['プッシュ','手元の履歴をGitHubへ送ること。公開ページが更新される。'],
+['PWA','ホーム画面に追加でアプリのように動くWebページ。'],
+['Service Worker','PWAの裏方。オフライン対応とキャッシュ。更新が見えない時の容疑者。'],
+['localStorage','ブラウザ内の小さな保存箱（約5MB）。同じ公開元で共有。'],
+['IndexedDB','ブラウザ内の大きな保存庫。画像や大量データ向け。'],
+['Cloudflare Worker','サーバーを持たずに動かす小さなプログラム。sync-worker はこれ。'],
+['JSON','データを {"名前":"値"} の形で書く約束。AIに「JSONのみ」と頼むと扱いやすい。'],
+['CLI / ターミナル','文字でコンピュータに命令する画面（PowerShellなど）。'],
+['デバッグ','不具合の原因を探して直すこと。再現手順を書くのが第一歩。']
+];
+
+// ============ AI添削（任意・sync-worker /ai） ============
+function syncCfg(){const g=k=>{try{return(localStorage.getItem(k)||'').trim()}catch(e){return''}};
+ return{ep:(g('aidojo_sync_endpoint')||g('el_sync_endpoint')||g('qr_sync_endpoint')).replace(/\/$/,''),tk:g('aidojo_sync_token')||g('el_sync_token')||g('qr_sync_token')}}
+const SECRET=/(sk-[A-Za-z0-9_-]{16,}|gh[pousr]_[A-Za-z0-9]{20,}|AIza[0-9A-Za-z_-]{30,}|Bearer\s+[A-Za-z0-9._-]{20,}|[A-Fa-f0-9]{40,}|-----BEGIN)/;
+async function aiReview(task,text){
+ const c=syncCfg();if(!c.ep||!c.tk)throw new Error('設定が未入力です（下の「AI添削の設定」）');
+ if(SECRET.test(text))throw new Error('キーやトークンらしい文字列が含まれています。伏せ字にしてから送ってください');
+ const prompt='あなたはAIの頼み方を教える優しい先生です。次の「課題」に対する生徒の依頼文を添削してください。\n'
+ +'観点：目的／材料／制約／出力形式。良い点を1つ、足りない点を最大3つ、改善した例文を1つ。日本語で、各項目は短く。\n\n課題：'+task+'\n\n生徒の依頼文：\n'+text;
+ const ctl=new AbortController(),to=setTimeout(()=>ctl.abort(),45000);
+ try{const r=await fetch(c.ep+'/ai',{method:'POST',signal:ctl.signal,headers:{'Content-Type':'application/json',Authorization:'Bearer '+c.tk},
+  body:JSON.stringify({provider:'claude',model:'claude-sonnet-4-6',maxTokens:900,prompt})});
+  if(r.status===401)throw new Error('トークンが違います');if(!r.ok)throw new Error('AI中継エラー '+r.status);
+  const d=await r.json();return String(d&&d.text||'(空の返事)')}
+ catch(e){throw (e&&e.name==='AbortError')?new Error('時間切れでした'):e}finally{clearTimeout(to)}}
+
+// ============ 画面 ============
+let tab='learn',open=null,qd={};
+const TABS=[['learn','📘','学ぶ'],['prac','✍️','練習'],['mk','🛠','作る'],['gl','📖','用語'],['me','📒','記録']];
+function nav(){$('#nav').innerHTML=TABS.map(t=>`<button data-t="${t[0]}" class="${tab===t[0]?'on':''}"><b>${t[1]}</b>${t[2]}</button>`).join('');
+ $('#nav').querySelectorAll('button').forEach(b=>b.onclick=()=>{tab=b.dataset.t;open=null;render();scrollTo(0,0)})}
+function render(){nav();({learn:rLearn,prac:rPrac,mk:rMake,gl:rGl,me:rMe})[tab]()}
+
+function pct(){return Math.round(Object.keys(S.done).filter(k=>L.some(l=>l.id===k)).length/L.length*100)}
+function rLearn(){
+ if(open){const l=L.find(x=>x.id===open);return rLesson(l)}
+ const n=Object.keys(S.done).length;
+ $('#app').innerHTML=`<h1>ai-dojo</h1><p class="sub">コードとAIの使い方を、あなたの実体験から学ぶ道場。1回5分。</p>
+ <div class="card"><div class="row" style="justify-content:space-between"><b>進み具合</b><span>${n} / ${L.length} 完了</span></div><div class="bar" style="margin-top:8px"><i style="width:${pct()}%"></i></div></div>`
+ +L.map((l,i)=>`<div class="card lesson ${S.done[l.id]?'done':''}" data-id="${l.id}"><div class="n">${S.done[l.id]?'✓':i+1}</div><div><div class="t">${esc(l.t)}</div><div class="s"><span class="tag ${l.real?'real':''}">${esc(l.tag)}</span>${esc(l.s)}</div></div></div>`).join('');
+ $('#app').querySelectorAll('.lesson').forEach(e=>e.onclick=()=>{open=e.dataset.id;qd={};render();scrollTo(0,0)})}
+function rLesson(l){
+ const q=l.q;
+ $('#app').innerHTML=`<button class="back" id="bk">← 一覧へ</button><h1>${esc(l.t)}</h1><p class="sub"><span class="tag ${l.real?'real':''}">${esc(l.tag)}</span>${esc(l.s)}</p>
+ <div class="card">${l.b.join('')}</div><div class="try"><b>やってみよう</b><br>${esc(l.try)}</div>
+ <div class="card"><b>確認クイズ</b><p>${esc(q.q)}</p><div id="opts">${q.o.map((o,i)=>`<button class="opt" data-i="${i}">${esc(o)}</button>`).join('')}</div><div id="why" class="msg"></div></div>
+ <div class="row"><button class="g" id="nt">この学びをメモ</button><button id="dn">${S.done[l.id]?'完了済み ✓':'完了にする'}</button></div><div id="nm" class="msg"></div>`;
+ $('#bk').onclick=()=>{open=null;render()};
+ $('#opts').querySelectorAll('.opt').forEach(b=>b.onclick=()=>{const i=+b.dataset.i;if(qd.a)return;qd.a=1;
+  $('#opts').querySelectorAll('.opt').forEach((x,j)=>{if(j===q.a)x.classList.add('ok');else if(j===i)x.classList.add('ng')});
+  $('#why').textContent=(i===q.a?'正解！ ':'おしい。 ')+q.w;if(i===q.a){S.quiz[l.id]=1;save()}});
+ $('#dn').onclick=()=>{S.done[l.id]=Date.now();save();$('#dn').textContent='完了済み ✓';$('#nm').textContent='お疲れさま。次の一歩へ'};
+ $('#nt').onclick=()=>{const t=prompt('この学びを一言で（自分の言葉で）');if(t&&t.trim()){S.notes.unshift({t:t.trim(),from:l.t,at:Date.now()});save();$('#nm').textContent='記録タブに保存しました'}}}
+
+function rPrac(){
+ if(open){const p=P.find(x=>x.id===open);return rTask(p)}
+ $('#app').innerHTML=`<h1>練習</h1><p class="sub">ダメな依頼を、4点セットで書き直す練習。送信は不要、判定は端末内で行います。</p>`
+ +P.map((p,i)=>`<div class="card lesson" data-id="${p.id}"><div class="n">${S.prac[p.id]?'✓':i+1}</div><div><div class="t">${esc(p.t)}</div><div class="s">元の依頼：「${esc(p.vague)}」</div></div></div>`).join('');
+ $('#app').querySelectorAll('.lesson').forEach(e=>e.onclick=()=>{open=e.dataset.id;render();scrollTo(0,0)})}
+function rTask(p){
+ $('#app').innerHTML=`<button class="back" id="bk">← 課題一覧</button><h1>${esc(p.t)}</h1>
+ <div class="bad">ダメな依頼：「${esc(p.vague)}」</div><p class="sub">${esc(p.ctx)}</p>
+ <textarea id="tx" placeholder="4点セット（目的・材料・制約・出力形式）を入れて書き直してください"></textarea>
+ <div class="row" style="margin-top:8px"><button id="ck">判定する</button><button class="g" id="ex">例を見る</button><button class="g" id="ai">AIに添削</button></div>
+ <div id="rs"></div><div id="ap" class="card" hidden><b>AI添削の設定</b><p class="sub">既存の同期Worker設定を自動で使います。無ければ入力。トークンは保存のみで画面に残りません。</p>
+ <input id="ep" placeholder="同期Workerのアドレス"><div style="height:6px"></div><input id="tk" type="password" placeholder="トークン（空なら変更しない）"><div class="row" style="margin-top:8px"><button class="g" id="sv">設定を保存</button></div><div id="sm" class="msg"></div></div>
+ <div id="am" class="msg"></div><div id="ao"></div>`;
+ $('#bk').onclick=()=>{open=null;render()};
+ $('#ck').onclick=()=>{const t=$('#tx').value.trim();if(!t){$('#rs').innerHTML='<p class="msg">文章を書いてください</p>';return}
+  const r=evalP(t),n=r.filter(x=>x.ok).length;
+  $('#rs').innerHTML='<div class="card">'+r.map(x=>`<div class="chk"><span>${x.ok?'✅':'⬜'}</span><span>${esc(x.l)}</span></div>`).join('')
+   +`<p>${n===4?'4点そろいました。確かめる手順も添えるとさらに安心です。':n>=2?'あと'+(4-n)+'点で型が完成します。':'まず「目的」と「制約」から足してみましょう。'}</p><p class="msg">※キーワードでの簡易判定です。内容の良し悪しではなく「抜け」を見つけるためのものです。</p></div>`;
+  if(n===4){S.prac[p.id]=1;save()}};
+ $('#ex').onclick=()=>{$('#rs').innerHTML=`<div class="good"><b>例</b><br>${esc(p.ex).replace(/\n/g,'<br>')}</div>`};
+ $('#ai').onclick=async()=>{const t=$('#tx').value.trim();const m=$('#am');if(!t){m.textContent='文章を書いてください';return}
+  const c=syncCfg();if(!c.ep||!c.tk){$('#ap').hidden=false;$('#ep').value=c.ep;m.textContent='先に設定してください';return}
+  $('#ai').disabled=true;m.textContent='添削中…（10〜20秒）';$('#ao').innerHTML='';
+  try{const r=await aiReview(p.t+'（元の依頼：'+p.vague+'／'+p.ctx+'）',t);m.textContent='';const d=document.createElement('div');d.className='card';d.style.whiteSpace='pre-wrap';d.textContent=r;$('#ao').appendChild(d)}
+  catch(e){m.textContent='失敗：'+(e.message||e)}finally{$('#ai').disabled=false}};
+ $('#sv').onclick=()=>{try{const e=$('#ep').value.trim();if(e)localStorage.setItem('aidojo_sync_endpoint',e);const t=$('#tk').value.trim();if(t)localStorage.setItem('aidojo_sync_token',t)}catch(x){}
+  $('#tk').value='';$('#sm').textContent='保存しました'}}
+
+
+// ============ 作る：依頼文ビルダー＋配布コマンド ============
+const RULES=[
+ ['single','HTML1ファイルで作る（外部ライブラリ・ビルドなし）',1,'HTML1ファイルで、外部ライブラリやビルド手順は使わない。'],
+ ['iphone','iPhoneで使う（タップしやすい大きさ、ホーム画面追加に対応）',1,'iPhoneで使う。ボタンは指で押しやすい大きさにし、ホーム画面に追加して動くPWAにする（manifest・アイコン・Service Worker付き）。'],
+ ['local','データは端末内に保存（外部送信しない）',1,'データは端末内にのみ保存し、勝手に外部へ送らない。'],
+ ['keep','既存データ・既存機能を壊さない',1,'既存のデータ形式と既存機能は変えない。'],
+ ['names','配布ファイル名は アプリ名__ファイル名',1,'配布ファイルは「アプリ名__ファイル名」（例 {app}__index.html）の名前で出す。'],
+ ['steps','小さく作り、確認手順を添える',1,'まず骨組みだけ作り、動作確認の手順を添える。'],
+ ['paste','コマンドはそのままコピペできる形（説明文・空欄なし）',1,'PowerShellのコマンドは、そのままコピペで動く形にする。説明文や<空欄>は入れない。'],
+ ['secret','キー・トークンは貼らない／入力欄で扱う',1,'キーやトークンはコードに書かず、入力欄から自分で設定する設計にする。']
+];
+const MK=Object.assign({app:'',goal:'',feat:'',who:'自分（iPhone）',rules:RULES.filter(r=>r[2]).map(r=>r[0]),files:'index.html manifest.webmanifest icon.svg sw.js'},store.get('aidojo_mk',{}));
+function buildPrompt(m){
+ const app=(m.app||'(アプリ名)').trim();
+ const lines=['【目的】',(m.goal||'(何を実現したいか)').trim(),'','【使う人・環境】',(m.who||'').trim()];
+ if((m.feat||'').trim()){lines.push('','【入れたい機能】');m.feat.trim().split(/\n+/).forEach(x=>lines.push('・'+x.replace(/^[・\-\s]+/,'')))}
+ lines.push('','【守るルール】');
+ RULES.filter(r=>m.rules.includes(r[0])).forEach(r=>lines.push('・'+r[3].replace('{app}',app)));
+ lines.push('','【出力形式】','・まず最初の段階（骨組み）だけ作る','・出来上がったファイルをダウンロードできる形で出す','・変更した点と確認手順を短く添える');
+ return lines.join('\n')}
+function buildShip(m){
+ const app=(m.app||'').trim().replace(/[^A-Za-z0-9_-]/g,'-')||'my-app';
+ const fl=(m.files||'index.html').trim().split(/[\s,]+/).filter(Boolean).map(f=>'"'+f.replace(/"/g,'')+'"').join(',');
+ const fn=($('#shipfn')||{}).textContent||'';
+ return fn.replace(/\s+$/,'')+'\nShip "'+app+'" @('+fl+')\n'}
+function rMake(){
+ const m=MK;
+ $('#app').innerHTML=`<h1>作る</h1><p class="sub">ここまでの学びを使って、次のアプリを作る準備をします。①依頼文 → AIに貼る　②できたら配布コマンド → PowerShellに貼る</p>
+ <div class="card"><b>① 依頼文をつくる</b>
+ <p class="sub" style="margin:8px 0 4px">アプリ名（英数字とハイフン）</p><input id="mApp" placeholder="例：my-notes" value="">
+ <p class="sub" style="margin:8px 0 4px">目的（何を実現したい？）</p><textarea id="mGoal" style="min-height:80px" placeholder="例：買い物メモを素早く残して、買ったら消せる"></textarea>
+ <p class="sub" style="margin:8px 0 4px">入れたい機能（1行に1つ）</p><textarea id="mFeat" style="min-height:80px" placeholder="例：\n1行入力で追加\nチェックで完了\n完了を一括削除"></textarea>
+ <p class="sub" style="margin:8px 0 4px">使う人・環境</p><input id="mWho">
+ <p class="sub" style="margin:10px 0 2px">守るルール（あなたの流儀）</p><div id="mRules"></div></div>
+ <div class="row"><button id="mGo">依頼文を作る</button><button class="g" id="mCp">コピー</button></div>
+ <pre id="mOut" style="margin-top:8px" hidden></pre><div id="mChk"></div><div id="mMsg" class="msg"></div>
+ <div class="card"><b>② 配布コマンドをつくる</b><p class="sub">アプリが出来て、ダウンロードに <code>アプリ名__ファイル名</code> が届いたら、これをPowerShellに1回貼るだけ。</p>
+ <p class="sub" style="margin:8px 0 4px">ファイル（空白区切り）</p><input id="mFiles">
+ <div class="row" style="margin-top:8px"><button id="sGo">コマンドを作る</button><button class="g" id="sCp">コピー</button></div><pre id="sOut" style="margin-top:8px;max-height:220px" hidden></pre></div>`;
+ $('#mApp').value=m.app;$('#mGoal').value=m.goal;$('#mFeat').value=m.feat;$('#mWho').value=m.who;$('#mFiles').value=m.files;
+ $('#mRules').innerHTML=RULES.map(r=>`<label class="chk"><input type="checkbox" data-k="${r[0]}" ${m.rules.includes(r[0])?'checked':''} style="width:22px;height:22px;flex:0 0 22px"><span>${esc(r[1])}</span></label>`).join('');
+ const pull=()=>{m.app=$('#mApp').value;m.goal=$('#mGoal').value;m.feat=$('#mFeat').value;m.who=$('#mWho').value;m.files=$('#mFiles').value;
+  m.rules=[...$('#mRules').querySelectorAll('input:checked')].map(x=>x.dataset.k);store.set('aidojo_mk',m)};
+ let cur='';
+ $('#mGo').onclick=()=>{pull();if(!m.goal.trim()){$('#mMsg').textContent='目的を1行書いてください';return}
+  if(SECRET.test(m.goal+m.feat)){$('#mMsg').textContent='キーらしい文字列があります。伏せてください';return}
+  cur=buildPrompt(m);$('#mOut').hidden=false;$('#mOut').textContent=cur;$('#mMsg').textContent='';
+  const r=evalP(cur.replace(/【.*?】/g,''));$('#mChk').innerHTML='<div class="card">'+r.map(x=>`<div class="chk"><span>${x.ok?'✅':'⬜'}</span><span>${esc(x.l)}</span></div>`).join('')+'</div>'};
+ $('#mCp').onclick=async()=>{if(!cur){$('#mMsg').textContent='先に「依頼文を作る」を押してください';return}try{await navigator.clipboard.writeText(cur);$('#mMsg').textContent='コピーしました。AIの入力欄に貼ってください'}catch(e){$('#mMsg').textContent='コピーできません。文字を長押しで選んでコピーしてください'}};
+ let sh='';
+ $('#sGo').onclick=()=>{pull();sh=buildShip(m);$('#sOut').hidden=false;$('#sOut').textContent=sh};
+ $('#sCp').onclick=async()=>{pull();sh=buildShip(m);try{await navigator.clipboard.writeText(sh);$('#sOut').hidden=false;$('#sOut').textContent=sh;$('#mMsg').textContent='配布コマンドをコピーしました'}catch(e){$('#mMsg').textContent='コピーできませんでした'}};
+ ['mApp','mGoal','mFeat','mWho','mFiles'].forEach(id=>$('#'+id).oninput=pull);
+ $('#mRules').onchange=pull}
+
+function rGl(){
+ $('#app').innerHTML=`<h1>用語集</h1><p class="sub">会話で出てくる言葉を、短く。</p><input id="q" placeholder="検索"><dl class="gl" id="dl"></dl>`;
+ const draw=()=>{const q=$('#q').value.trim().toLowerCase();$('#dl').innerHTML=G.filter(g=>!q||(g[0]+g[1]).toLowerCase().includes(q)).map(g=>`<dt>${esc(g[0])}</dt><dd>${esc(g[1])}</dd>`).join('')};
+ $('#q').oninput=draw;draw()}
+
+function rMe(){
+ const nd=Object.keys(S.done).length,nq=Object.keys(S.quiz).length,np=Object.keys(S.prac).length;
+ $('#app').innerHTML=`<h1>記録</h1><div class="card"><div>📘 レッスン完了 <b>${nd}</b> / ${L.length}</div><div>✅ クイズ正解 <b>${nq}</b> / ${L.length}</div><div>✍️ 練習クリア <b>${np}</b> / ${P.length}</div></div>
+ <h2>つまずき・学びノート</h2><p class="sub">AIとのやり取りで「次は防ぎたい」と思ったことを残します（秘密は書かない）。</p>
+ <textarea id="nt" style="min-height:90px" placeholder="例：同じ名前のファイルが混ざった → 名前に app名__ を付ける"></textarea>
+ <div class="row" style="margin-top:8px"><button id="ad">追加</button><button class="g" id="cp">全部コピー</button></div><div id="mm" class="msg"></div><div id="nl"></div>`;
+ const draw=()=>{$('#nl').innerHTML='';S.notes.forEach((n,i)=>{const d=document.createElement('div');d.className='note';const s=document.createElement('small');s.textContent=new Date(n.at).toLocaleDateString('ja-JP')+(n.from?'・'+n.from:'');
+  const t=document.createElement('div');t.textContent=n.t;const x=document.createElement('button');x.className='g';x.textContent='削除';x.style.cssText='min-height:30px;padding:2px 10px;margin-top:6px;font-size:12px';
+  x.onclick=()=>{if(confirm('削除しますか？')){S.notes.splice(i,1);save();draw()}};d.append(s,t,x);$('#nl').appendChild(d)})};
+ $('#ad').onclick=()=>{const t=$('#nt').value.trim();if(!t)return;if(SECRET.test(t)){$('#mm').textContent='キーらしい文字列があります。伏せてください';return}
+  S.notes.unshift({t,at:Date.now()});save();$('#nt').value='';$('#mm').textContent='追加しました';draw()};
+ $('#cp').onclick=async()=>{const txt=S.notes.map(n=>'・'+n.t).join('\n')||'(まだありません)';try{await navigator.clipboard.writeText(txt);$('#mm').textContent='コピーしました'}catch(e){$('#mm').textContent='コピーできませんでした'}};
+ draw()}
+
+render();
+if('serviceWorker' in navigator&&location.protocol.startsWith('http'))addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
+</script>
+</body>
+</html>
