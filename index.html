@@ -358,13 +358,15 @@ const RULES=[
  ['paste','コマンドはそのままコピペできる形（説明文・空欄なし）',1,'PowerShellのコマンドは、そのままコピペで動く形にする。説明文や<空欄>は入れない。'],
  ['secret','キー・トークンは貼らない／入力欄で扱う',1,'キーやトークンはコードに書かず、入力欄から自分で設定する設計にする。']
 ];
-const MK=Object.assign({app:'',goal:'',feat:'',who:'自分（iPhone）',rules:RULES.filter(r=>r[2]).map(r=>r[0]),files:'index.html manifest.webmanifest icon.svg sw.js'},store.get('aidojo_mk',{}));
+const MK=Object.assign({app:'',goal:'',feat:'',who:'自分（iPhone）',rules:RULES.filter(r=>r[2]).map(r=>r[0]),files:'index.html manifest.webmanifest icon.svg sw.js',off:[]},store.get('aidojo_mk',{}));
+const activeNotes=m=>S.notes.filter(n=>n.rule&&!(m.off||[]).includes(n.at));
 function buildPrompt(m){
  const app=(m.app||'(アプリ名)').trim();
  const lines=['【目的】',(m.goal||'(何を実現したいか)').trim(),'','【使う人・環境】',(m.who||'').trim()];
  if((m.feat||'').trim()){lines.push('','【入れたい機能】');m.feat.trim().split(/\n+/).forEach(x=>lines.push('・'+x.replace(/^[・\-\s]+/,'')))}
  lines.push('','【守るルール】');
  RULES.filter(r=>m.rules.includes(r[0])).forEach(r=>lines.push('・'+r[3].replace('{app}',app)));
+ activeNotes(m).forEach(n=>lines.push('・前回のつまずきを踏まえる：'+n.t.replace(/\s*\n\s*/g,' ')));
  lines.push('','【出力形式】','・まず最初の段階（骨組み）だけ作る','・出来上がったファイルをダウンロードできる形で出す','・変更した点と確認手順を短く添える');
  return lines.join('\n')}
 function buildShip(m){
@@ -380,7 +382,8 @@ function rMake(){
  <p class="sub" style="margin:8px 0 4px">目的（何を実現したい？）</p><textarea id="mGoal" style="min-height:80px" placeholder="例：買い物メモを素早く残して、買ったら消せる"></textarea>
  <p class="sub" style="margin:8px 0 4px">入れたい機能（1行に1つ）</p><textarea id="mFeat" style="min-height:80px" placeholder="例：\n1行入力で追加\nチェックで完了\n完了を一括削除"></textarea>
  <p class="sub" style="margin:8px 0 4px">使う人・環境</p><input id="mWho">
- <p class="sub" style="margin:10px 0 2px">守るルール（あなたの流儀）</p><div id="mRules"></div></div>
+ <p class="sub" style="margin:10px 0 2px">守るルール（あなたの流儀）</p><div id="mRules"></div>
+ <p class="sub" style="margin:12px 0 2px">あなたのつまずきルール（記録タブで「ルールにする」を押したもの）</p><div id="mNotes"></div></div>
  <div class="row"><button id="mGo">依頼文を作る</button><button class="g" id="mCp">コピー</button></div>
  <pre id="mOut" style="margin-top:8px" hidden></pre><div id="mChk"></div><div id="mMsg" class="msg"></div>
  <div class="card"><b>② 配布コマンドをつくる</b><p class="sub">アプリが出来て、ダウンロードに <code>アプリ名__ファイル名</code> が届いたら、これをPowerShellに1回貼るだけ。</p>
@@ -400,6 +403,11 @@ function rMake(){
  $('#sGo').onclick=()=>{pull();sh=buildShip(m);$('#sOut').hidden=false;$('#sOut').textContent=sh};
  $('#sCp').onclick=async()=>{pull();sh=buildShip(m);try{await navigator.clipboard.writeText(sh);$('#sOut').hidden=false;$('#sOut').textContent=sh;$('#mMsg').textContent='配布コマンドをコピーしました'}catch(e){$('#mMsg').textContent='コピーできませんでした'}};
  ['mApp','mGoal','mFeat','mWho','mFiles'].forEach(id=>$('#'+id).oninput=pull);
+ const nl=activeNotes({off:[]});const all=S.notes.filter(n=>n.rule);
+ const nb=$('#mNotes');if(!all.length){nb.innerHTML='<p class="msg">まだありません。記録タブでメモの「ルールにする」を押すと、ここに出て、依頼文に自動で入ります。</p>'}
+ else all.forEach(n=>{const l=document.createElement('label');l.className='chk';const c=document.createElement('input');c.type='checkbox';c.checked=!(m.off||[]).includes(n.at);c.style.cssText='width:22px;height:22px;flex:0 0 22px';
+  c.onchange=()=>{m.off=(m.off||[]).filter(a=>a!==n.at);if(!c.checked)m.off.push(n.at);store.set('aidojo_mk',m)};
+  const sp=document.createElement('span');sp.textContent=n.t;l.append(c,sp);nb.appendChild(l)});
  $('#mRules').onchange=pull}
 
 function rGl(){
@@ -410,12 +418,15 @@ function rGl(){
 function rMe(){
  const nd=Object.keys(S.done).length,nq=Object.keys(S.quiz).length,np=Object.keys(S.prac).length;
  $('#app').innerHTML=`<h1>記録</h1><div class="card"><div>📘 レッスン完了 <b>${nd}</b> / ${L.length}</div><div>✅ クイズ正解 <b>${nq}</b> / ${L.length}</div><div>✍️ 練習クリア <b>${np}</b> / ${P.length}</div></div>
- <h2>つまずき・学びノート</h2><p class="sub">AIとのやり取りで「次は防ぎたい」と思ったことを残します（秘密は書かない）。</p>
+ <h2>つまずき・学びノート</h2><p class="sub">AIとのやり取りで「次は防ぎたい」と思ったことを残します（秘密は書かない）。<b>「ルールにする」</b>を押したメモは、「作る」タブの依頼文に自動で入ります。</p>
  <textarea id="nt" style="min-height:90px" placeholder="例：同じ名前のファイルが混ざった → 名前に app名__ を付ける"></textarea>
  <div class="row" style="margin-top:8px"><button id="ad">追加</button><button class="g" id="cp">全部コピー</button></div><div id="mm" class="msg"></div><div id="nl"></div>`;
  const draw=()=>{$('#nl').innerHTML='';S.notes.forEach((n,i)=>{const d=document.createElement('div');d.className='note';const s=document.createElement('small');s.textContent=new Date(n.at).toLocaleDateString('ja-JP')+(n.from?'・'+n.from:'');
   const t=document.createElement('div');t.textContent=n.t;const x=document.createElement('button');x.className='g';x.textContent='削除';x.style.cssText='min-height:30px;padding:2px 10px;margin-top:6px;font-size:12px';
-  x.onclick=()=>{if(confirm('削除しますか？')){S.notes.splice(i,1);save();draw()}};d.append(s,t,x);$('#nl').appendChild(d)})};
+  x.onclick=()=>{if(confirm('削除しますか？')){S.notes.splice(i,1);save();draw()}};const rb=document.createElement('button');rb.className='g';rb.style.cssText='min-height:30px;padding:2px 10px;margin:6px 6px 0 0;font-size:12px';
+   const paint=()=>{rb.textContent=n.rule?'✅ ルールにしている':'ルールにする';rb.style.borderColor=n.rule?'var(--ok)':'';rb.style.color=n.rule?'var(--ok)':''};paint();
+   rb.onclick=()=>{n.rule=!n.rule;save();paint()};
+   x.style.marginLeft='0';const bar=document.createElement('div');bar.append(rb,x);d.append(s,t,bar);$('#nl').appendChild(d)})};
  $('#ad').onclick=()=>{const t=$('#nt').value.trim();if(!t)return;if(SECRET.test(t)){$('#mm').textContent='キーらしい文字列があります。伏せてください';return}
   S.notes.unshift({t,at:Date.now()});save();$('#nt').value='';$('#mm').textContent='追加しました';draw()};
  $('#cp').onclick=async()=>{const txt=S.notes.map(n=>'・'+n.t).join('\n')||'(まだありません)';try{await navigator.clipboard.writeText(txt);$('#mm').textContent='コピーしました'}catch(e){$('#mm').textContent='コピーできませんでした'}};
