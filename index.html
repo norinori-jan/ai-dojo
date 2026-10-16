@@ -50,12 +50,15 @@ code{background:#0a1017;padding:1px 5px;border-radius:5px;font-size:.92em}
 .back{background:transparent;color:var(--ac);padding:4px 0;min-height:36px;font-weight:600}
 .note{border:1px solid var(--line);border-radius:10px;padding:8px 10px;margin:6px 0;font-size:14px;white-space:pre-wrap}
 .note small{color:var(--mu);display:block}
+textarea.code{font-family:ui-monospace,Menlo,monospace;font-size:14px;line-height:1.5;min-height:230px;white-space:pre;overflow:auto;tab-size:2}
+.sub code,.card code{word-break:break-all}
 [hidden]{display:none!important}
 </style>
 </head>
 <body>
 <div id="app"></div>
 <script type="text/plain" id="shipfn">function Nz([string]$s) { ($s.Normalize([Text.NormalizationForm]::FormKC) -replace '[ー―–—−‐]','-' -replace '\s','').ToLower() }
+function ShipSet([string]$n, [string]$s) { if (-not $global:ShipRes) { $global:ShipRes = [ordered]@{} }; $global:ShipRes[$n] = $s }
 function Ship {
   param([string]$name, [string[]]$files)
   $user = "norinori-jan"
@@ -63,13 +66,15 @@ function Ship {
   $roots = @("Downloads","iCloudDrive","Desktop","OneDrive") | ForEach-Object { Join-Path $env:USERPROFILE $_ } | Where-Object { Test-Path $_ }
   Write-Host "=== $name ==="
   $pool = foreach ($r in $roots) { Get-ChildItem $r -File -Recurse -Depth 2 -ErrorAction SilentlyContinue }
+  $revPat = '^' + [regex]::Escape((Nz $name)) + '-r(\d+)'
   $src = @{}
   foreach ($f in $files) {
     $b = [IO.Path]::GetFileNameWithoutExtension($f); $e = [IO.Path]::GetExtension($f)
     $pat = '^' + [regex]::Escape((Nz $name)) + '(-r\d+)?_*' + [regex]::Escape((Nz $b)) + '.*' + [regex]::Escape((Nz $e)) + '(\.txt)?$'
-    $c = $pool | Where-Object { (Nz $_.Name) -match $pat } | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    $c = $pool | Where-Object { (Nz $_.Name) -match $pat } | Sort-Object @{ Expression = { if ((Nz $_.Name) -match $revPat) { [int]$Matches[1] } else { 0 } }; Descending = $true }, @{ Expression = { $_.LastWriteTime }; Descending = $true } | Select-Object -First 1
     if (-not $c) {
       Write-Host "NG: ${name}__$f が見つかりません"
+      ShipSet $name "NG（${f} が見つからない）"
       Write-Host "  探した場所: $($roots -join ', ')"
       $near = $pool | Where-Object { (Nz $_.Name).Contains((Nz $name)) } | Select-Object -First 8
       if ($near) { Write-Host "  近い名前のファイル:"; $near | ForEach-Object { Write-Host "    $($_.FullName)" } } else { Write-Host "  名前に $name を含むファイルが1つもありません" }
@@ -90,15 +95,48 @@ function Ship {
   foreach ($f in $files) { Copy-Item $src[$f].FullName (Join-Path $dest $f) -Force }
   git add @files
   git diff --cached --quiet
-  if ($LASTEXITCODE -eq 0) { Write-Host "$name : 変更なし（すでに反映済み）"; return }
+  if ($LASTEXITCODE -eq 0) { Write-Host "$name : 変更なし（すでに反映済み）"; ShipSet $name "変更なし"; return }
   git commit -m "update $name"
   if (-not $exists) { gh repo create "$user/$name" --public --source . --remote origin }
   $br = (git rev-parse --abbrev-ref HEAD).Trim()
   git push -u origin $br
-  if ($LASTEXITCODE -ne 0) { Write-Host "NG: $name の push に失敗しました（ブランチ: $br）"; return }
+  if ($LASTEXITCODE -ne 0) { Write-Host "NG: $name の push に失敗しました（ブランチ: $br）"; ShipSet $name "NG（pushに失敗）"; return }
   gh api "repos/$user/$name/pages" *> $null
   if ($LASTEXITCODE -ne 0) { gh api -X POST "repos/$user/$name/pages" -f "source[branch]=$br" -f "source[path]=/" *> $null }
   Write-Host "完了: https://$user.github.io/$name/"
+  ShipSet $name "完了 https://$user.github.io/$name/"
+}
+
+function ShipAll {
+  param([string[]]$only = @(), [int]$days = 3)
+  $map = @{ index = 'html'; manifest = 'webmanifest'; icon = 'svg'; sw = 'js' }
+  $roots = @("Downloads","iCloudDrive","Desktop","OneDrive") | ForEach-Object { Join-Path $env:USERPROFILE $_ } | Where-Object { Test-Path $_ }
+  $since = (Get-Date).AddDays(-$days)
+  if ($only.Count -gt 0) { $since = [datetime]::MinValue }
+  $global:ShipRes = [ordered]@{}
+  $rx = '^([a-z0-9][a-z0-9-]*?)(-r\d+)?[_\s]+(index|manifest|icon|sw)(\s*\(\d+\)|\s+\d+)?\.(html|webmanifest|svg|js)(\.txt)?$'
+  $apps = @{}
+  foreach ($r in $roots) {
+    Get-ChildItem $r -File -Recurse -Depth 2 -ErrorAction SilentlyContinue | Where-Object { $_.LastWriteTime -ge $since } | ForEach-Object {
+      $n = ($_.Name.Normalize([Text.NormalizationForm]::FormKC) -replace '[ー―–—−‐]','-').ToLower()
+      if ($n -match $rx -and $map[$Matches[3]] -eq $Matches[5]) {
+        $app = $Matches[1]; $file = $Matches[3] + '.' + $Matches[5]
+        if (-not $apps.ContainsKey($app)) { $apps[$app] = @() }
+        if ($apps[$app] -notcontains $file) { $apps[$app] += $file }
+      }
+    }
+  }
+  if ($only.Count -gt 0) { $targets = @($only | ForEach-Object { (Nz $_) }) } else { $targets = @($apps.Keys | Sort-Object) }
+  if ($targets.Count -eq 0) { Write-Host "公開待ちのファイルがありません（最近 $days 日以内に届いた「アプリ名__index.html」の形のもの）"; return }
+  Write-Host ("まとめて公開: " + ($targets -join ", "))
+  foreach ($a in $targets) {
+    if (-not $apps.ContainsKey($a)) { Write-Host "=== $a ==="; Write-Host "NG: $a のファイルが見つかりません"; $global:ShipRes[$a] = "NG（ファイルなし）"; continue }
+    Ship $a $apps[$a]
+  }
+  Set-Location $env:USERPROFILE
+  Write-Host ""
+  Write-Host "===== 結果 ====="
+  foreach ($k in $global:ShipRes.Keys) { Write-Host ("{0,-16} {1}" -f $k, $global:ShipRes[$k]) }
 }
 </script>
 
@@ -109,7 +147,7 @@ function Ship {
 const store={get(k,d){try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}},
   set(k,v){try{localStorage.setItem(k,JSON.stringify(v));return true}catch(e){return false}}};
 const KEY='aidojo_v1';
-let S=Object.assign({done:{},quiz:{},prac:{},notes:[]},store.get(KEY,{}));
+let S=Object.assign({done:{},quiz:{},prac:{},notes:[],drill:{},draft:{}},store.get(KEY,{}));
 const save=()=>store.set(KEY,S);
 const $=s=>document.querySelector(s);
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -231,7 +269,35 @@ const L=[
  '<p><b>「作る」タブ</b>では、1と5を自動で用意します（依頼文の組み立て／配布コマンドの生成）。</p>',
  '<p>うまくいかなかった所は、<b>記録タブ</b>に「何が起きた→次はどうする」で残すと、あなた専用のルール集になります。</p>'],
  try:'「作る」タブで、次に作るアプリの依頼文を1本作ってみましょう。',
- q:{q:'アプリ作りの最初の一手は？',o:['すぐ全部作らせる','4点セットで依頼文を作る','公開する'],a:1,w:'依頼文の質が、その後の手戻りの量を決めます。'}}
+ q:{q:'アプリ作りの最初の一手は？',o:['すぐ全部作らせる','4点セットで依頼文を作る','公開する'],a:1,w:'依頼文の質が、その後の手戻りの量を決めます。'}},
+{id:'l17',t:'関数＝アプリの正体',s:'関数を制する者がアプリを制する',tag:'関数',
+ b:['<p>アプリを突き詰めると、<b>関数の組み合わせ</b>です。関数は「入れる → 処理する → 出す」小さな機械。</p>',
+ '<pre>入れる(引数)  →  処理  →  出す(戻り値)\n\ntoNumber("△1,200")        → -1200      金額を読む（table-pad）\nwareki("令和7年4月1日")     → "2025-04-01"  日付を読む\ngroupSum(rows,"c","y")     → {食費:2000}   カテゴリ別の合計（ダッシュボード）\nmaskSecret("sk-abcdef123") → "sk-*******23"  秘密を伏せる</pre>',
+ '<p>アプリごとに違うのは、画面ではなく<b>中にある関数</b>です。会計アプリは「金額を読む関数」、語学アプリは「読み上げる関数」、金庫は「暗号化する関数」。</p>',
+ '<div class="good">だから、関数の作り方がわかれば、新しいアプリも作れます。ここから、練習タブの<b>関数ドリル</b>で手を動かします。</div>',
+ '<p>関数の読み方は4ステップ：<b>① 名前 → ② 引数 → ③ 戻り値 → ④ 中身</b>。名前と引数と戻り値だけで、何をする関数かはほぼわかります。</p>'],
+ try:'自分のアプリを1つ開き、関数を3つ探して「入れるもの → 出るもの」を書き出してみましょう（code-ref の「HTMLの読み方」が助けになります）。',
+ q:{q:'関数の説明で正しいのは？',o:['入れたもの（引数）を受け取り、結果（戻り値）を返す小さな機械','画面の見た目だけを決める設定','データを保存する箱'],a:0,w:'関数は「入れる→処理→出す」。アプリはこの小さな機械の組み合わせでできています。'}},
+{id:'l18',t:'関数の書き方：5つの型と3つの役割',s:'短く・1つの仕事・分けて作る',tag:'関数',
+ b:['<h3>書き方の5つの型</h3>',
+ '<pre>function area(w, h) { return w * h }                // ① 関数\nconst area2 = (w, h) => w * h                       // ② アロー関数（短い）\nconst greet = (name = "あなた") => "こんにちは、" + name  // ③ 初期値\nconst price = ({ yen, qty = 1 }) => yen * qty        // ④ オブジェクトで受ける\nconst split = s => [s.slice(0, 1), s.slice(1)]       // ⑤ 複数を配列で返す</pre>',
+ '<h3>関数の3つの役割（分けて作る）</h3>',
+ '<div class="chk"><span>🧮</span><span><b>計算</b>：入力から結果を作るだけ。外（画面・保存）に触らない。テストしやすい。</span></div>',
+ '<div class="chk"><span>💾</span><span><b>保存</b>：localStorage や IndexedDB に書く。</span></div>',
+ '<div class="chk"><span>🖼</span><span><b>画面</b>：結果を受け取って、表示するだけ。</span></div>',
+ '<p>基本の流れ：<b>データを変える → 保存 → 画面を作り直す</b>。計算は別の関数に分けます。</p>',
+ '<p>名前は動詞で：<code>get / set / parse / to / is / render / save / load</code>。失敗しても落ちないよう、<b>失敗は null や {ok:false} で返す</b>のが基本です。</p>'],
+ try:'関数ドリルの 1〜3 問を、解答例を見る前にやってみましょう。',
+ q:{q:'計算・保存・画面を別の関数に分ける一番の利点は？',o:['コードが短くなって見た目が良い','1つずつ確かめられ、直す場所もAIに伝えやすい','動作が速くなる'],a:1,w:'分けておくと、計算だけを例で確かめられ、不具合の場所も特定しやすくなります。'}},
+{id:'l19',t:'関数をAIに頼む・確かめる',s:'仕様は「例」で伝える',tag:'関数',
+ b:['<p>関数を頼む一番強い方法は、<b>入力 → 出力の例</b>を渡すことです。境界の例（空・おかしな入力）も入れます。</p>',
+ '<pre>関数 toNumber(s) をJavaScriptで作る。\n例：\n"△1,200" → -1200\n"(500)"   → -500\n"1,234円" → 1234\n"abc"     → null\n""        → null\n条件：保存や画面には触らない。関数1つだけ返して。</pre>',
+ '<p><b>確かめ方</b>：その例が、そのままテストになります。関数ドリルは、これを自動でやっています。</p>',
+ '<p><b>直してもらう時</b>は、失敗した例を渡します。</p>',
+ '<pre>toNumber("(500)") が 500 になる。\n期待は -500。\n直す範囲は toNumber だけ。他は変えない。</pre>',
+ '<div class="good">「いい感じに」より「この入力ならこの出力」。AIにも、あなた自身にも、ゴールがはっきりします。</div>'],
+ try:'関数ドリルを1問やってから、同じ形（例を並べる）で、自分に必要な関数を頼む文を書いてみましょう。',
+ q:{q:'AIに関数を頼む時、一番伝わりやすいのは？',o:['「いい感じに作って」','入力→出力の例（境界の例も含む）','中身の書き方を全部指定する'],a:1,w:'例はそのままテストになり、期待が曖昧になりません。'}}
 ];
 
 // ============ 練習課題 ============
@@ -245,6 +311,88 @@ const P=[
 {id:'p3',t:'既存アプリを直す',vague:'ここ直して',
  ctx:'状況：既存アプリの保存ボタンが反応しない。',
  ex:'既存のtable-padで、保存ボタンを押しても何も起きない。目的は保存が確実に動くこと。次のファイルを添付する。変更は保存処理に限り、他の機能と既存データの形式は変えない。変更した箇所の説明と、確認手順を付けて、全体を1ファイルで。'}
+];
+// ============ 関数ドリル（あなたのアプリで実際に使っている関数が題材） ============
+const F=[
+{id:'f1',t:'足し算（ウォームアップ）',name:'add',sig:'add(a, b)',
+ desc:'2つの数を足した結果を返す関数を書きます。まずは「引数 → 戻り値」の形に慣れましょう。',
+ start:'function add(a, b) {\n  // ここに書く\n}',
+ tests:[[[2,3],5],[[-1,1],0],[[0.5,0.25],0.75]],
+ hint:'値を返すには return を使います。return a + b;',
+ ans:'function add(a, b) {\n  return a + b;\n}'},
+{id:'f2',t:'金額を数字にする（会計）',name:'toNumber',sig:'toNumber(s)',
+ desc:'"△1,200" → -1200、"(500)" → -500、"1,234円" → 1234。数字として読めない時（"abc" や 空）は null を返します。table-padで実際に使っている考え方です。',
+ start:'function toNumber(s) {\n  // ここに書く\n}',
+ tests:[[['△1,200'],-1200],[['(500)'],-500],[['1,234円'],1234],[['abc'],null],[[''],null],[['￥１，０００'],1000]],
+ hint:'①s.normalize("NFKC") で全角を半角に ②カンマ・空白・円・¥を消す（正規表現 /[,\\s円¥]/g） ③先頭が △ ▲ - か、(…) ならマイナス ④parseFloat して isNaN なら null',
+ ans:'function toNumber(s) {\n  s = String(s).normalize("NFKC").replace(/[,\\s円¥]/g, "");\n  let neg = false;\n  if (/^[△▲-]/.test(s)) { neg = true; s = s.slice(1); }\n  if (/^\\(.*\\)$/.test(s)) { neg = true; s = s.slice(1, -1); }\n  const n = parseFloat(s);\n  return isNaN(n) ? null : (neg ? -n : n);\n}'},
+{id:'f3',t:'合計を出す（reduce）',name:'total',sig:'total(items)',
+ desc:'items は {price, qty} の配列です。price × qty の合計を返します。空の配列は 0。',
+ start:'function total(items) {\n  // ここに書く\n}',
+ tests:[[[[{price:100,qty:2},{price:50,qty:1}]],250],[[[]],0],[[[{price:30,qty:3}]],90]],
+ hint:'配列の reduce を使います。items.reduce((合計, 1件) => 合計 + 1件.price * 1件.qty, 0)',
+ ans:'function total(items) {\n  return items.reduce((s, i) => s + i.price * i.qty, 0);\n}'},
+{id:'f4',t:'カテゴリ別の合計（ダッシュボードの核）',name:'groupSum',sig:'groupSum(rows, key, val)',
+ desc:'rows を key の値ごとにまとめ、val の合計をオブジェクトで返します。例：groupSum(rows,"c","y") → {"食費":2000,"交通":300}。',
+ start:'function groupSum(rows, key, val) {\n  // ここに書く\n}',
+ tests:[[[[{c:'食費',y:1200},{c:'交通',y:300},{c:'食費',y:800}],'c','y'],{'食費':2000,'交通':300}],[[[],'c','y'],{}],[[[{k:'a',v:1},{k:'a',v:2}],'k','v'],{a:3}]],
+ hint:'空のオブジェクト {} を用意し、1件ずつ m[row[key]] = (m[row[key]] || 0) + row[val] とします。reduce でも for でもOK。',
+ ans:'function groupSum(rows, key, val) {\n  const m = {};\n  for (const r of rows) m[r[key]] = (m[r[key]] || 0) + r[val];\n  return m;\n}'},
+{id:'f5',t:'秘密を伏せる',name:'maskSecret',sig:'maskSecret(s)',
+ desc:'先頭3文字と末尾2文字だけ残し、間を * にします。5文字以下は、全部 * にします。例："sk-abcdef123" → "sk-*******23"。',
+ start:'function maskSecret(s) {\n  // ここに書く\n}',
+ tests:[[['sk-abcdef123'],'sk-*******23'],[['abc'],'***'],[['abcde'],'*****'],[['abcdef'],'abc*ef']],
+ hint:'長さが5以下なら "*".repeat(s.length)。それ以外は s.slice(0,3) + "*".repeat(s.length - 5) + s.slice(-2)。',
+ ans:'function maskSecret(s) {\n  if (s.length <= 5) return "*".repeat(s.length);\n  return s.slice(0, 3) + "*".repeat(s.length - 5) + s.slice(-2);\n}'},
+{id:'f6',t:'AIの返事からJSONを取り出す',name:'extractJSON',sig:'extractJSON(text)',
+ desc:'text の中の、最初の [ から最後の ] までをJSONとして読み、配列を返します。``` は無視。見つからない・壊れている時は null。ear-firstで実際に使っている処理です。',
+ start:'function extractJSON(text) {\n  // ここに書く\n}',
+ tests:[[['```json\n[1,2,3]\n```'],[1,2,3]],[['答え：[{"a":1}] です'],[{a:1}]],[['なし'],null],[['[1,2'],null],[['x [1,] y'],null]],
+ hint:'indexOf("[") と lastIndexOf("]") で範囲を切り出し、try { JSON.parse(...) } catch { return null }。',
+ ans:'function extractJSON(text) {\n  const a = text.indexOf("["), b = text.lastIndexOf("]");\n  if (a < 0 || b < a) return null;\n  try { return JSON.parse(text.slice(a, b + 1)); } catch (e) { return null; }\n}'},
+{id:'f7',t:'和暦を西暦にする',name:'wareki',sig:'wareki(s)',
+ desc:'"令和7年4月1日" → "2025-04-01"。"平成元年1月8日" → "1989-01-08"。読めない時は null。基準年：令和1年=2019、平成1年=1989、昭和1年=1926。',
+ start:'function wareki(s) {\n  // ここに書く\n}',
+ tests:[[['令和7年4月1日'],'2025-04-01'],[['平成元年1月8日'],'1989-01-08'],[['昭和64年1月7日'],'1989-01-07'],[['2025年4月1日'],null]],
+ hint:'元号ごとの「基準」を表にします：令和2018・平成1988・昭和1925（これに年を足すと西暦）。正規表現 /(令和|平成|昭和)(\\d+|元)年(\\d+)月(\\d+)日/ で取り出し、月日は padStart(2,"0")。',
+ ans:'function wareki(s) {\n  const ERA = { 令和: 2018, 平成: 1988, 昭和: 1925 };\n  const m = s.match(/(令和|平成|昭和)(\\d+|元)年(\\d+)月(\\d+)日/);\n  if (!m) return null;\n  const y = ERA[m[1]] + (m[2] === "元" ? 1 : +m[2]);\n  return y + "-" + String(m[3]).padStart(2, "0") + "-" + String(m[4]).padStart(2, "0");\n}'},
+{id:'f8',t:'一番新しい版を選ぶ（Shipの中身）',name:'pickNewest',sig:'pickNewest(names)',
+ desc:'ファイル名の配列から、-r の番号が一番大きいものを返します。番号が無いものは 0 番。例："x-r2__index.html" の番号は 2。空の配列は null。',
+ start:'function pickNewest(names) {\n  // ここに書く\n}',
+ tests:[[[['x__index.html','x-r2__index.html','x-r10__index.html']],'x-r10__index.html'],[[['x__index.html','x-r2__index.html']],'x-r2__index.html'],[[['x__index.html']],'x__index.html'],[[[]],null]],
+ hint:'番号を取り出す小さな関数を先に作ります：const rev = n => { const m = n.match(/-r(\\d+)/); return m ? Number(m[1]) : 0; }。あとは「最大のものを探す」。',
+ ans:'function pickNewest(names) {\n  const rev = n => { const m = n.match(/-r(\\d+)/); return m ? Number(m[1]) : 0; };\n  let best = null;\n  for (const n of names) if (best === null || rev(n) > rev(best)) best = n;\n  return best;\n}'}
+,
+{id:'f9',t:'検索で絞り込む（連動フィルタ）',name:'filterBy',sig:'filterBy(rows, q)',
+ desc:'rows は {name, tag} の配列。q の文字が name か tag に含まれるものだけを返します。大文字小文字は区別せず、q の前後の空白は無視。q が空なら全部返します。メモ・一覧の検索ボックスの基本形です。',
+ start:'function filterBy(rows, q) {\n  // ここに書く\n}',
+ tests:[[[[{name:'Apple',tag:'fruit'},{name:'Car',tag:'vehicle'}],'app'],[{name:'Apple',tag:'fruit'}]],[[[{name:'Apple',tag:'fruit'},{name:'Car',tag:'vehicle'}],' VEHI '],[{name:'Car',tag:'vehicle'}]],[[[{name:'A',tag:'x'}],''],[{name:'A',tag:'x'}]],[[[{name:'A',tag:'x'}],'zzz'],[]]],
+ hint:'先に q を整える：const k = q.trim().toLowerCase(); 空なら rows をそのまま返す。あとは rows.filter(r => (r.name + " " + r.tag).toLowerCase().includes(k))。',
+ ans:'function filterBy(rows, q) {\n  const k = q.trim().toLowerCase();\n  if (!k) return rows;\n  return rows.filter(r => (r.name + " " + r.tag).toLowerCase().includes(k));\n}'},
+{id:'f10',t:'暗号化文字列を分解する（crypto-vault）',name:'parseBlob',sig:'parseBlob(s)',
+ desc:'"v1:IV:DATA" の形の文字列を { v, iv, ct } にして返します。コロンで3つに分かれていない、または最初が "v1" でないものは null。鍵やパスワードは扱わず、形の検査だけをします。',
+ start:'function parseBlob(s) {\n  // ここに書く\n}',
+ tests:[[['v1:AAAA:BBBB'],{v:'v1',iv:'AAAA',ct:'BBBB'}],[['v2:AAAA:BBBB'],null],[['v1:AAAA'],null],[['v1:A:B:C'],null],[[''],null]],
+ hint:'const p = s.split(":"); p.length !== 3 や p[0] !== "v1" の時は、早めに return null。条件を満たした時だけオブジェクトを作る。',
+ ans:'function parseBlob(s) {\n  const p = String(s).split(":");\n  if (p.length !== 3 || p[0] !== "v1") return null;\n  return { v: p[0], iv: p[1], ct: p[2] };\n}'},
+{id:'f11',t:'AIの返事を検証する',name:'checkReply',sig:'checkReply(text)',
+ desc:'AIの返事の中から { } の部分を取り出して JSON として読み、title が文字列で items が「文字列だけの配列」なら、そのオブジェクトを返します。1つでも形が違う、JSONとして読めない、{ } が無い時は null。AIの返事は「信用して使う前に形を調べる」が鉄則です。',
+ start:'function checkReply(text) {\n  // ここに書く\n}',
+ tests:[[['{"title":"A","items":["x"]}'],{title:'A',items:['x']}],[['はい、これです\n```json\n{"title":"B","items":[]}\n```'],{title:'B',items:[]}],[['{"title":1,"items":[]}'],null],[['{"title":"C","items":[1]}'],null],[['JSONはありません'],null]],
+ hint:'text.indexOf("{") と text.lastIndexOf("}") で範囲を切り出し、try { JSON.parse(...) } catch で失敗を null にする。そのあと typeof o.title、Array.isArray(o.items)、o.items.every(x => typeof x === "string") を調べる。',
+ ans:'function checkReply(text) {\n  const a = text.indexOf("{"), b = text.lastIndexOf("}");\n  if (a < 0 || b < a) return null;\n  let o;\n  try { o = JSON.parse(text.slice(a, b + 1)); } catch (e) { return null; }\n  if (!o || typeof o.title !== "string" || !Array.isArray(o.items)) return null;\n  if (!o.items.every(x => typeof x === "string")) return null;\n  return o;\n}'},
+{id:'f12',t:'次の復習日を決める（間隔反復）',name:'nextDue',sig:'nextDue(last, level)',
+ desc:'last は "YYYY-MM-DD"。level 0,1,2,3,4 のとき、間隔は 1,3,7,14,30 日。level がそれより大きい時は 30 日。次の日付を "YYYY-MM-DD" で返します。quick-ref の復習の考え方です。日付の計算は UTC で行うと、時差でずれません。',
+ start:'function nextDue(last, level) {\n  // ここに書く\n}',
+ tests:[[['2026-10-16',0],'2026-10-17'],[['2026-10-16',2],'2026-10-23'],[['2026-10-16',9],'2026-11-15'],[['2026-12-30',1],'2027-01-02']],
+ hint:'const days = [1,3,7,14,30]; const n = days[Math.min(level, 4)]; 日付は new Date(last + "T00:00:00Z") で作り、setUTCDate(d.getUTCDate() + n)。最後は d.toISOString().slice(0,10)。',
+ ans:'function nextDue(last, level) {\n  const days = [1, 3, 7, 14, 30];\n  const n = days[Math.min(level, 4)];\n  const d = new Date(last + "T00:00:00Z");\n  d.setUTCDate(d.getUTCDate() + n);\n  return d.toISOString().slice(0, 10);\n}'},
+{id:'f13',t:'2台のデータを合体する（同期）',name:'mergeByUpdated',sig:'mergeByUpdated(a, b)',
+ desc:'a と b は {id, updated, ...} の配列（updated は数）。同じ id があれば updated が大きい方を残し、全体を id の昇順で返します。iPhoneとPCなど、2か所で編集したデータを合体する時の基本形です。',
+ start:'function mergeByUpdated(a, b) {\n  // ここに書く\n}',
+ tests:[[[[{id:'1',updated:5,t:'a'}],[{id:'1',updated:9,t:'b'}]],[{id:'1',updated:9,t:'b'}]],[[[{id:'2',updated:1,t:'x'}],[{id:'1',updated:1,t:'y'}]],[{id:'1',updated:1,t:'y'},{id:'2',updated:1,t:'x'}]],[[[{id:'1',updated:7,t:'a'}],[{id:'1',updated:7,t:'b'}]],[{id:'1',updated:7,t:'a'}]],[[[],[]],[]]],
+ hint:'Map を使う：const m = new Map(); for (const r of [...a, ...b]) { const o = m.get(r.id); if (!o || r.updated > o.updated) m.set(r.id, r); } 最後に [...m.values()] を id で sort。同じ updated の時は先に入れた a を残す。',
+ ans:'function mergeByUpdated(a, b) {\n  const m = new Map();\n  for (const r of [...a, ...b]) {\n    const o = m.get(r.id);\n    if (!o || r.updated > o.updated) m.set(r.id, r);\n  }\n  return [...m.values()].sort((x, y) => (x.id < y.id ? -1 : x.id > y.id ? 1 : 0));\n}'}
 ];
 const CHK=[
  {k:'goal',l:'🎯 目的（何をしたいか）',re:/したい|作りたい|目的|ために|知りたい|欲しい|ほしい|直したい|できるように|確実に/},
@@ -319,10 +467,51 @@ function rLesson(l){
  $('#nt').onclick=()=>{const t=prompt('この学びを一言で（自分の言葉で）');if(t&&t.trim()){S.notes.unshift({t:t.trim(),from:l.t,at:Date.now()});save();$('#nm').textContent='記録タブに保存しました'}}}
 
 function rPrac(){
- if(open){const p=P.find(x=>x.id===open);return rTask(p)}
+ if(open){if(open[0]==='f')return rDrill(F.find(x=>x.id===open));const p=P.find(x=>x.id===open);return rTask(p)}
  $('#app').innerHTML=`<h1>練習</h1><p class="sub">ダメな依頼を、4点セットで書き直す練習。送信は不要、判定は端末内で行います。</p>`
- +P.map((p,i)=>`<div class="card lesson" data-id="${p.id}"><div class="n">${S.prac[p.id]?'✓':i+1}</div><div><div class="t">${esc(p.t)}</div><div class="s">元の依頼：「${esc(p.vague)}」</div></div></div>`).join('');
+ +P.map((p,i)=>`<div class="card lesson ${S.prac[p.id]?'done':''}" data-id="${p.id}"><div class="n">${S.prac[p.id]?'✓':i+1}</div><div><div class="t">${esc(p.t)}</div><div class="s">元の依頼：「${esc(p.vague)}」</div></div></div>`).join('')
+ +`<h2>🧩 関数ドリル（${Object.keys(S.drill).length} / ${F.length}）</h2><p class="sub">関数を書いて「実行」すると、例（テスト）で自動採点します。あなたのアプリで実際に使う関数が題材です。</p>`
+ +F.map((f,i)=>`<div class="card lesson ${S.drill[f.id]?'done':''}" data-id="${f.id}"><div class="n">${S.drill[f.id]?'✓':i+1}</div><div><div class="t">${esc(f.t)}</div><div class="s"><code>${esc(f.sig)}</code></div></div></div>`).join('');
  $('#app').querySelectorAll('.lesson').forEach(e=>e.onclick=()=>{open=e.dataset.id;render();scrollTo(0,0)})}
+
+// ---- 関数ドリル：Web Workerで安全に実行（無限ループでも画面は固まらない） ----
+function workerBody(){
+  const ser=v=>v===undefined?'undefined':(typeof v==='number'&&isNaN(v)?'NaN':JSON.stringify(v,(k,x)=>x&&typeof x==='object'&&!Array.isArray(x)?Object.keys(x).sort().reduce((o,kk)=>(o[kk]=x[kk],o),{}):x));
+  self.onmessage=e=>{const d=e.data;let f;
+    try{f=new Function(d.code+'\nreturn (typeof '+d.name+"==='function')?"+d.name+':null;')()}catch(x){self.postMessage({err:'書き方のエラー：'+x.message});return}
+    if(!f){self.postMessage({err:'関数 '+d.name+' が見つかりません（名前を変えていませんか？）'});return}
+    self.postMessage({res:d.tests.map(t=>{try{return{out:ser(f(...t[0])),exp:ser(t[1])}}catch(x){return{err:String(x&&x.message||x),exp:ser(t[1])}}})})};
+}
+const WSRC='('+workerBody.toString()+')()';
+function runDrill(f,code){return new Promise(ok=>{
+  let w,t;try{w=new Worker(URL.createObjectURL(new Blob([WSRC],{type:'text/javascript'})))}catch(e){ok({err:'この環境では実行できません（Workerが使えません）'});return}
+  t=setTimeout(()=>{w.terminate();ok({err:'時間切れです（無限ループになっていませんか？）'})},2500);
+  w.onmessage=e=>{clearTimeout(t);w.terminate();ok(e.data)};
+  w.onerror=e=>{clearTimeout(t);w.terminate();ok({err:'実行エラー：'+(e.message||'')})};
+  w.postMessage({code,name:f.name,tests:f.tests})})}
+const fixQuotes=c=>c.replace(/[‘’]/g,"'").replace(/[“”]/g,'"');
+function rDrill(f){
+  const code0=S.draft[f.id]!=null?S.draft[f.id]:f.start;
+  $('#app').innerHTML=`<button class="back" id="bk">← 練習へ</button><h1>${esc(f.t)}</h1><p class="sub"><code>${esc(f.sig)}</code></p>
+  <div class="card">${esc(f.desc)}</div>
+  <textarea id="cd" class="code" spellcheck="false" autocapitalize="off" autocorrect="off" autocomplete="off"></textarea>
+  <div class="row" style="margin-top:8px"><button id="rn">▶ 実行（採点）</button><button class="g" id="ht">ヒント</button><button class="g" id="an">解答例</button><button class="g" id="rs">最初に戻す</button></div>
+  <div id="rt"></div><div id="hx"></div>`;
+  $('#cd').value=code0;
+  $('#cd').oninput=()=>{S.draft[f.id]=$('#cd').value;save()};
+  $('#bk').onclick=()=>{open=null;render()};
+  $('#ht').onclick=()=>{$('#hx').innerHTML=`<div class="try"><b>ヒント</b><br>${esc(f.hint)}</div>`};
+  $('#an').onclick=()=>{if(!confirm('まず自分で試しましたか？解答例を見ますか？'))return;$('#hx').innerHTML=`<div class="good"><b>解答例</b>（これが唯一の正解ではありません）</div><pre>${esc(f.ans)}</pre>`};
+  $('#rs').onclick=()=>{if(confirm('最初の状態に戻しますか？')){delete S.draft[f.id];save();rDrill(f)}};
+  $('#rn').onclick=async()=>{const code=fixQuotes($('#cd').value);$('#rn').disabled=true;$('#rt').innerHTML='<p class="msg">実行中…</p>';
+    const r=await runDrill(f,code);$('#rn').disabled=false;
+    if(r.err){$('#rt').innerHTML=`<div class="bad">${esc(r.err)}</div>`;return}
+    let okn=0;const rows=r.res.map((x,i)=>{const t=f.tests[i];const pass=!x.err&&x.out===x.exp;if(pass)okn++;
+      const call=f.name+'('+JSON.stringify(t[0]).slice(1,-1)+')';
+      return `<div class="card" style="border-color:${pass?'var(--ok)':'var(--ng)'}"><div>${pass?'✅':'❌'} <code>${esc(call)}</code></div>${pass?'':`<div class="sub" style="margin:4px 0 0">期待：<code>${esc(x.exp)}</code><br>${x.err?'エラー：'+esc(x.err):'結果：<code>'+esc(x.out)+'</code>'}</div>`}</div>`}).join('');
+    const all=okn===r.res.length;if(all){S.drill[f.id]=Date.now();save()}
+    $('#rt').innerHTML=`<h2>${all?'🎉 全問正解':okn+' / '+r.res.length+' 問正解'}</h2>`+rows+(all?'<p class="sub">解答例と見比べて、書き方の違いを見てみましょう。メモに残すと、次の依頼で活きます。</p>':'')}}
+
 function rTask(p){
  $('#app').innerHTML=`<button class="back" id="bk">← 課題一覧</button><h1>${esc(p.t)}</h1>
  <div class="bad">ダメな依頼：「${esc(p.vague)}」</div><p class="sub">${esc(p.ctx)}</p>
@@ -373,7 +562,10 @@ function buildShip(m){
  const app=(m.app||'').trim().replace(/[^A-Za-z0-9_-]/g,'-')||'my-app';
  const fl=(m.files||'index.html').trim().split(/[\s,]+/).filter(Boolean).map(f=>'"'+f.replace(/"/g,'')+'"').join(',');
  const fn=($('#shipfn')||{}).textContent||'';
- return fn.replace(/\s+$/,'')+'\nShip "'+app+'" @('+fl+')\n'}
+ return fn.replace(/\s+$/,'')+'\nShip "'+app+'" @('+fl+')\nSet-Location $env:USERPROFILE\n'}
+function buildShipAll(){
+ const fn=($('#shipfn')||{}).textContent||'';
+ return fn.replace(/\s+$/,'')+'\nShipAll\n'}
 function rMake(){
  const m=MK;
  $('#app').innerHTML=`<h1>作る</h1><p class="sub">ここまでの学びを使って、次のアプリを作る準備をします。①依頼文 → AIに貼る　②できたら配布コマンド → PowerShellに貼る</p>
@@ -388,7 +580,9 @@ function rMake(){
  <pre id="mOut" style="margin-top:8px" hidden></pre><div id="mChk"></div><div id="mMsg" class="msg"></div>
  <div class="card"><b>② 配布コマンドをつくる</b><p class="sub">アプリが出来て、ダウンロードに <code>アプリ名__ファイル名</code> が届いたら、これをPowerShellに1回貼るだけ。</p>
  <p class="sub" style="margin:8px 0 4px">ファイル（空白区切り）</p><input id="mFiles">
- <div class="row" style="margin-top:8px"><button id="sGo">コマンドを作る</button><button class="g" id="sCp">コピー</button></div><pre id="sOut" style="margin-top:8px;max-height:220px" hidden></pre></div>`;
+ <div class="row" style="margin-top:8px"><button id="sGo">コマンドを作る</button><button class="g" id="sCp">コピー</button></div>
+ <p class="sub" style="margin:12px 0 4px"><b>まとめて公開</b>：最近3日以内にダウンロードへ届いた <code>アプリ名__index.html</code> などを自動で見つけて、全アプリを順番にpushします。最後に結果の一覧が出ます。</p>
+ <div class="row"><button id="aGo">全部まとめて公開</button><button class="g" id="aCp">コピー</button></div><pre id="sOut" style="margin-top:8px;max-height:220px" hidden></pre></div>`;
  $('#mApp').value=m.app;$('#mGoal').value=m.goal;$('#mFeat').value=m.feat;$('#mWho').value=m.who;$('#mFiles').value=m.files;
  $('#mRules').innerHTML=RULES.map(r=>`<label class="chk"><input type="checkbox" data-k="${r[0]}" ${m.rules.includes(r[0])?'checked':''} style="width:22px;height:22px;flex:0 0 22px"><span>${esc(r[1])}</span></label>`).join('');
  const pull=()=>{m.app=$('#mApp').value;m.goal=$('#mGoal').value;m.feat=$('#mFeat').value;m.who=$('#mWho').value;m.files=$('#mFiles').value;
@@ -402,6 +596,8 @@ function rMake(){
  let sh='';
  $('#sGo').onclick=()=>{pull();sh=buildShip(m);$('#sOut').hidden=false;$('#sOut').textContent=sh};
  $('#sCp').onclick=async()=>{pull();sh=buildShip(m);try{await navigator.clipboard.writeText(sh);$('#sOut').hidden=false;$('#sOut').textContent=sh;$('#mMsg').textContent='配布コマンドをコピーしました'}catch(e){$('#mMsg').textContent='コピーできませんでした'}};
+ $('#aGo').onclick=()=>{sh=buildShipAll();$('#sOut').hidden=false;$('#sOut').textContent=sh};
+ $('#aCp').onclick=async()=>{sh=buildShipAll();try{await navigator.clipboard.writeText(sh);$('#sOut').hidden=false;$('#sOut').textContent=sh;$('#mMsg').textContent='まとめて公開のコマンドをコピーしました'}catch(e){$('#mMsg').textContent='コピーできませんでした'}};
  ['mApp','mGoal','mFeat','mWho','mFiles'].forEach(id=>$('#'+id).oninput=pull);
  const nl=activeNotes({off:[]});const all=S.notes.filter(n=>n.rule);
  const nb=$('#mNotes');if(!all.length){nb.innerHTML='<p class="msg">まだありません。記録タブでメモの「ルールにする」を押すと、ここに出て、依頼文に自動で入ります。</p>'}
@@ -417,7 +613,7 @@ function rGl(){
 
 function rMe(){
  const nd=Object.keys(S.done).length,nq=Object.keys(S.quiz).length,np=Object.keys(S.prac).length;
- $('#app').innerHTML=`<h1>記録</h1><div class="card"><div>📘 レッスン完了 <b>${nd}</b> / ${L.length}</div><div>✅ クイズ正解 <b>${nq}</b> / ${L.length}</div><div>✍️ 練習クリア <b>${np}</b> / ${P.length}</div></div>
+ $('#app').innerHTML=`<h1>記録</h1><div class="card"><div>📘 レッスン完了 <b>${nd}</b> / ${L.length}</div><div>✅ クイズ正解 <b>${nq}</b> / ${L.length}</div><div>✍️ 練習クリア <b>${np}</b> / ${P.length}</div><div>🧩 関数ドリル <b>${Object.keys(S.drill).length}</b> / ${F.length}</div></div>
  <h2>つまずき・学びノート</h2><p class="sub">AIとのやり取りで「次は防ぎたい」と思ったことを残します（秘密は書かない）。<b>「ルールにする」</b>を押したメモは、「作る」タブの依頼文に自動で入ります。</p>
  <textarea id="nt" style="min-height:90px" placeholder="例：同じ名前のファイルが混ざった → 名前に app名__ を付ける"></textarea>
  <div class="row" style="margin-top:8px"><button id="ad">追加</button><button class="g" id="cp">全部コピー</button></div><div id="mm" class="msg"></div><div id="nl"></div>`;
